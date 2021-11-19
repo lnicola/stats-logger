@@ -6,15 +6,15 @@ use axum::{
     http,
     response::IntoResponse,
 };
-use deadpool_postgres::Pool;
 use headers::{authorization::Bearer, Authorization, HeaderMapExt};
 use hyper::StatusCode;
 use uuid::Uuid;
 
+use crate::db_conn::DbConn;
+
 pub struct Authentication;
 
 pub enum AuthenticationRejection {
-    Extensions,
     Db,
     Unauthorized,
 }
@@ -25,7 +25,7 @@ impl IntoResponse for AuthenticationRejection {
 
     fn into_response(self) -> http::Response<Self::Body> {
         match self {
-            AuthenticationRejection::Extensions | AuthenticationRejection::Db => {
+            AuthenticationRejection::Db => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal server error").into_response()
             }
             AuthenticationRejection::Unauthorized => {
@@ -45,11 +45,6 @@ impl<B: Send> FromRequest<B> for Authentication {
         'a: 'f,
     {
         Box::pin(async move {
-            let pool = req
-                .extensions()
-                .ok_or(AuthenticationRejection::Extensions)?
-                .get::<Pool>()
-                .ok_or(AuthenticationRejection::Db)?;
             let bearer = req
                 .headers()
                 .ok_or(AuthenticationRejection::Unauthorized)?
@@ -60,11 +55,11 @@ impl<B: Send> FromRequest<B> for Authentication {
                 tracing::error!("{}", e);
                 AuthenticationRejection::Unauthorized
             })?;
-            let conn = pool.get().await.map_err(|e| {
+            let conn = DbConn::from_request(req).await.map_err(|e| {
+                let e = e.into();
                 tracing::error!("{}", e);
                 AuthenticationRejection::Db
             })?;
-            let conn: &deadpool_postgres::ClientWrapper = conn.as_ref();
             let r = conn
                 .query_one(
                     "select exists (select * from access_tokens where id = $1)",

@@ -1,8 +1,11 @@
-use std::net::{IpAddr, SocketAddr, TcpListener};
+use std::{
+    env,
+    net::{IpAddr, SocketAddr, TcpListener},
+};
 
 use anyhow::{Context, Result};
-use axum::{extract::Extension, routing::post, AddExtensionLayer, Json, Router, Server};
-use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod};
+use axum::{routing::post, AddExtensionLayer, Json, Router, Server};
+use deadpool_postgres::{Config, ManagerConfig, RecyclingMethod};
 use tokio::runtime::Builder;
 use tokio_postgres::NoTls;
 use tower_http::trace::{DefaultOnResponse, TraceLayer};
@@ -10,69 +13,61 @@ use tracing::Level;
 
 use self::{
     authentication::Authentication,
+    db_conn::DbConn,
     models::{Stats, Stats2, Tabs},
+    route_error::RouteError,
 };
 
 mod authentication;
+mod db_conn;
 mod models;
+mod route_error;
 
 async fn stats(
     _authorization: Authentication,
-    pool: Extension<Pool>,
+    conn: DbConn,
     stats: Json<Stats>,
-) -> Result<(), String> {
-    let conn = pool.get().await.unwrap();
-    match conn
-        .execute(
-            "call insert_stats($1, $2, $3)",
-            &[&stats.time, &stats.temperature, &stats.humidity],
-        )
-        .await
-    {
-        Ok(_) => Ok(()),
-        Err(e) => Err(e.to_string()),
-    }
+) -> Result<(), RouteError> {
+    conn.execute(
+        "call insert_stats($1, $2, $3)",
+        &[&stats.time, &stats.temperature, &stats.humidity],
+    )
+    .await
+    .context("cannot save data")?;
+    Ok(())
 }
 
 async fn stats2(
     _authorization: Authentication,
-    pool: Extension<Pool>,
+    conn: DbConn,
     stats: Json<Stats2>,
-) -> Result<(), String> {
-    let conn = pool.get().await.unwrap();
-    match conn
-        .execute(
-            "call insert_stats2($1, $2, $3)",
-            &[&stats.time, &stats.temperature, &(stats.co2 as i16)],
-        )
-        .await
-    {
-        Ok(_) => Ok(()),
-        Err(e) => Err(e.to_string()),
-    }
+) -> Result<(), RouteError> {
+    conn.execute(
+        "call insert_stats2($1, $2, $3)",
+        &[&stats.time, &stats.temperature, &(stats.co2 as i16)],
+    )
+    .await
+    .context("cannot save data")?;
+    Ok(())
 }
 
 async fn tabs(
     _authorization: Authentication,
-    pool: Extension<Pool>,
+    conn: DbConn,
     tabs: Json<Tabs>,
-) -> Result<(), String> {
-    let conn = pool.get().await.unwrap();
-    match conn
-        .execute(
-            "insert into tabs(time, tabs) values($1, $2)",
-            &[&tabs.time, &(tabs.tabs as i16)],
-        )
-        .await
-    {
-        Ok(_) => Ok(()),
-        Err(e) => Err(e.to_string()),
-    }
+) -> Result<(), RouteError> {
+    conn.execute(
+        "insert into tabs(time, tabs) values($1, $2)",
+        &[&tabs.time, &(tabs.tabs as i16)],
+    )
+    .await
+    .context("cannot save data")?;
+    Ok(())
 }
 
 async fn run() -> Result<()> {
-    if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "stats_logger=info,tower_http=info")
+    if env::var("RUST_LOG").is_err() {
+        env::set_var("RUST_LOG", "stats_logger=info,tower_http=info")
     }
     tracing_subscriber::fmt::init();
 
