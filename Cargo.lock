@@ -859,7 +859,6 @@ dependencies = [
  "headers",
  "hyper",
  "serde",
- "serde_json",
  "time",
  "tokio",
  "tokio-postgres",
