@@ -92,7 +92,7 @@ async fn run() -> Result<()> {
     });
     let pool = cfg
         .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
-        .unwrap();
+        .context("cannot create connection pool")?;
 
     let app = Router::new()
         .route("/stats", post(stats))
