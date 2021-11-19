@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use axum::{routing::post, AddExtensionLayer, Json, Router, Server};
-use deadpool_postgres::{Config, ManagerConfig, RecyclingMethod};
+use deadpool_postgres::{Config, ManagerConfig, PoolConfig, RecyclingMethod};
 use tokio::runtime::Builder;
 use tokio_postgres::NoTls;
 use tower_http::trace::{DefaultOnResponse, TraceLayer};
@@ -81,10 +81,19 @@ async fn run() -> Result<()> {
     );
 
     let mut cfg = Config::new();
-    cfg.dbname = Some("room_stats".to_string());
+    cfg.host = env::var("DB_HOST").ok();
+    if let Some(port) = env::var("DB_PORT").ok() {
+        cfg.port = Some(port.parse().context("invalid `DB_PORT`")?);
+    }
+    cfg.user = env::var("DB_USER").ok();
+    cfg.password = env::var("DB_PASS").ok();
+    cfg.dbname = env::var("DB_NAME").ok();
+    cfg.application_name = Some("stats-logger".to_string());
     cfg.manager = Some(ManagerConfig {
         recycling_method: RecyclingMethod::Fast,
     });
+    cfg.pool = Some(PoolConfig::new(1));
+
     let pool = cfg
         .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
         .context("cannot create connection pool")?;
