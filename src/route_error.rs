@@ -25,7 +25,7 @@ impl IntoResponse for RouteError {
     type BodyError = <Self::Body as HttpBody>::Error;
 
     fn into_response(self) -> Response<Self::Body> {
-        tracing::error!("{}", self.0);
+        tracing::error!("{:#}", self.0);
         (StatusCode::INTERNAL_SERVER_ERROR, "internal server error").into_response()
     }
 }

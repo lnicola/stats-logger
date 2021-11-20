@@ -57,7 +57,7 @@ impl<B: Send> FromRequest<B> for Authentication {
             })?;
             let conn = DbConn::from_request(req).await.map_err(|e| {
                 let e = e.into();
-                tracing::error!("{}", e);
+                tracing::error!("{:#}", e);
                 AuthenticationRejection::Db
             })?;
             let r = conn
